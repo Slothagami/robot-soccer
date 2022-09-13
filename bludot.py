@@ -1,5 +1,4 @@
 # LEGO type:standard slot:0 autostart
-# COM11
 from mindstorms import MSHub, Motor, ColorSensor
 from time       import time_ns
 from math       import radians
@@ -8,6 +7,8 @@ import ustruct as struct
 import hub     as hubdata
 
 # TODO
+    # Get git installed on this computer
+        # .gitignore: __pycache__
     # test multiple files with new extension
     # balance larger back turn params
     # make sure everyone is on the same page about phase space
@@ -90,7 +91,7 @@ params = {
     "speed":             1,           # global speed
     "speed_norm":        Norm.square, # normilisation for final motor powers
 
-    "turn_factor":       (2, 1.2),    # (front, behind) # (2, 1.15)?
+    "turn_factor":       (2, 1.2),    # (front, behind)
     "turn_deadspace":    15,          # angle range that resets turning to 0
 
     "angle_deadzone":    4,           # deadzone size
