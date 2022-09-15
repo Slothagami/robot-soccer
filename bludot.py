@@ -9,9 +9,7 @@ import hub     as hubdata
 # TODO
     # Get git installed on this computer
         # .gitignore: __pycache__
-    # test multiple files with new extension
     # balance larger back turn params
-    # make sure everyone is on the same page about phase space
 
     # Test Bluetooth class
     # Action.intercept
@@ -117,40 +115,6 @@ for param in angle_params:
 #endregion
 
 ## Functional Classes ##
-class Bluetooth:
-    def __init__(self, connect_address):
-        self.bt = hubdata.BT_VCP()
-        self.connect_adress = connect_address
-
-        if not self.bt.isconnected():
-            hubdata.bluetooth.rfcomm_connect(connect_address)
-
-    def disconnect(self):
-        hubdata.bluetooth.rfcomm_disconnect()
-
-    def read(self, type, nbytes=4):
-        if type is float: nbytes = 4
-        if type is int:   nbytes = 2
-
-        data = self.bt.read(nbytes)
-
-        if type is int:
-            return struct.unpack("<H", data)[0]
-
-        if type is float:
-            return struct.unpack("f", data)[0]
-
-    def write(self, data):
-        buffer = None
-        if type(data) is int:
-            buffer = struct.pack("<H", data)
-
-        if type(data) is float:
-            buffer = struct.pack("f", data)
-            
-        if buffer is not None:
-            self.bt.write(bytes)
-
 class VectorMovementSystem:
     def __init__(self, motors: str, wheel_angle=45):
         """ motors in order: (x, -x, y, -y) """
