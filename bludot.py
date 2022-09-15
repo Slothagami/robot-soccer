@@ -223,6 +223,7 @@ class VectorMovementSystem:
         self.reset_motors()
 
         # TODO: Check for consistency with accelerometer movement?
+        
         # add to position if no lone spinning wheels
         x1, x2, y1, y2 = counts
         error_margin = params.get("wheel_error")
@@ -321,10 +322,12 @@ class SensorHandler:
         return complex(x, z)
 
     def acc_delta_pos(self):
-        """Delta position calculated based on acceleration"""
-        dtime = time_since(self.pupdate_position)
+        """Delta position in cm calculated based on acceleration"""
+        # time in seconds, to cancel the units so we get cm as result
+        # because accelerometer returns cm/s²
+        dtime = time_since(self.pupdate_position) / 1e9 
         self.pupdate_position = time_ns()
-        
+
         avg = (2 * self.pvelocity + self.acceleration_2d() * dtime) / 2
         return avg * dtime
 
