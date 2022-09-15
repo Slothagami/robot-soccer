@@ -42,6 +42,15 @@ def lerp(val, targ, amm):
 def clamp(x, minimum, maximum):
     return max(min(x, maximum), minimum)
 
+def average(*args):
+    """*args: average of a list object or of the arguments"""
+    # if first argument is not a number type
+    if not isinstance(args[0], (int, float, complex)): args = args[0]
+    return sum(args) / len(args)
+
+def aprox_equal(a, b, error_margin):
+    return b - error_margin < a < b + error_margin
+
 class Norm:
     def square(velocity):
         velocity = complex(velocity)
@@ -62,11 +71,8 @@ class Norm:
         else: return velocity / magnitude
 
 # Time Functions
-def time_ms():
-    return time_ns() / 1e6
-
 def time_since(time):
-    return time_ms() - time
+    return time_ns() - time
 #endregion
 
 #region Screen
@@ -90,6 +96,7 @@ class Screen:
 params = {
     "speed":             1,           # global speed
     "speed_norm":        Norm.square, # normilisation for final motor powers
+    "wheel_radius":      3.175,       # cm
 
     "turn_factor":       (2, 1.2),    # (front, behind)
     "turn_deadspace":    15,          # angle range that resets turning to 0
@@ -97,6 +104,8 @@ params = {
     "angle_deadzone":    4,           # deadzone size
     "angle_correct":     .38,         # speed of correction
     "angle_interpolate": .8,          # lerp speed of interpolaton
+
+    "wheel_error":       .1,          # how far apart do the motor readings have to be to call a spinning wheel
 
     "force_threshold":   800,         # size of a "significant force"
     "field_brightness":  (17, 40)     # range for brightness of the green carpet
@@ -149,10 +158,14 @@ class VectorMovementSystem:
         self.velocity     = 0
         self.spin         = 0
         self.wheel_angle  = radians(wheel_angle)
+        self.position     = 0
 
-        # reset motor counts
+        self.reset_motors()
+
+    def reset_motors(self):
         for motor in self.motors:
             motor.set_stop_action("hold")
+            motor.set_degrees_counted(0)
 
     def add_velocity(self, dir, speed=1):
         if dir == None: return
@@ -180,6 +193,44 @@ class VectorMovementSystem:
         self.velocity = 0
         self.spin     = 0
 
+    def update_position(self):
+        counts = []
+        # motors in order (x, -x, y, -y)
+        for n, motor in enumerate(self.motors):
+            counts.append(
+                # flip every other motor (they spin opposite) to align with convention
+                (-1)**n * radians(motor.get_degrees_counted())
+            )
+
+        # motors are now in order (x, x, y, y)
+        # x is 45 degrees axis (measured from +x), and y is 135 degrees axis
+        # average both measusements for more accuracy
+        motor_x = average(counts[:2])
+        motor_y = average(counts[2:])
+
+        # convert to cm
+        wheel_radius = params.get("wheel_radius")
+        motor_x *= wheel_radius
+        motor_y *= wheel_radius
+
+        # measurements are still offset 45 degrees from x axis
+        # convert basis to align with robot
+        motor_x *= exp(complex(0,      self.wheel_angle))
+        motor_y *= exp(complex(0, pi - self.wheel_angle))
+
+        delta_position = motor_x + motor_y
+
+        self.reset_motors()
+
+        # TODO: Check for consistency with accelerometer movement?
+        # add to position if no lone spinning wheels
+        x1, x2, y1, y2 = counts
+        error_margin = params.get("wheel_error")
+        if aprox_equal(x1, x2, error_margin) and aprox_equal(y1, y2, error_margin):
+            self.position += delta_position
+
+        return self.position
+
     def stop(self):
         for motor in self.motors:
             motor.stop()
@@ -187,6 +238,8 @@ class VectorMovementSystem:
 class SensorHandler:
     def __init__(self, distance_sensor: str, color_sensor: str, ir_segments=12):
         self.color = ColorSensor(color_sensor)
+        self.pvelocity = 0
+        self.pupdate_position = time_ns()
 
         # make sure The DIP switches on the disk are configured correctly: ON ON OFF
         self.ir_sensor = dataports.get(distance_sensor).device
@@ -262,6 +315,18 @@ class SensorHandler:
         x, z, y = hubdata.motion.accelerometer()
         # Y is flipped because gravity (downward) is read as positive
         return -x, -y, z # x is flipped in reading for some reason
+
+    def acceleration_2d(self):
+        x, y, z = self.acceleration()
+        return complex(x, z)
+
+    def acc_delta_pos(self):
+        """Delta position calculated based on acceleration"""
+        dtime = time_since(self.pupdate_position)
+        self.pupdate_position = time_ns()
+        
+        avg = (2 * self.pvelocity + self.acceleration_2d() * dtime) / 2
+        return avg * dtime
 
     # Environment
     def brightness(self):
@@ -352,6 +417,7 @@ while True:
 
     # In-game Loop
     while True:
+        movement.update_position()
         state()
         sensors.interpolate_dir()
         movement.move()
