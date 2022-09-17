@@ -3,8 +3,7 @@ from mindstorms import MSHub, Motor, ColorSensor
 from time       import time_ns
 from math       import radians
 from cmath      import *
-import ustruct as struct
-import hub     as hubdata
+import hub as hubdata
 
 # TODO
     # Get git installed on this computer
