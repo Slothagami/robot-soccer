@@ -6,11 +6,12 @@ from cmath      import *
 import hub as hubdata
 
 # TODO
+    # balance larger back turn params
+
     # test displacement tracking accuracy
     # act on measured postiton
-    # balance larger back turn params
+    
     # Action.intercept (Goalie AI)
-        # Predict ball motion
 
 #region Globals
 LEFT     = pi/2
@@ -20,7 +21,7 @@ BACKWARD = pi
 
 SECOND = 1e9 # nanoseconds in a second
 
-dataports = {
+ports = {
     "A": hubdata.port.A, "B": hubdata.port.B,
     "C": hubdata.port.C, "D": hubdata.port.D,
     "E": hubdata.port.E, "F": hubdata.port.F,
@@ -210,7 +211,7 @@ class SensorHandler:
         self.last_speed_check = time_ns()
 
         # make sure The DIP switches on the disk are configured correctly: ON ON OFF
-        self.ir_sensor = dataports.get(distance_sensor).device
+        self.ir_sensor = ports.get(distance_sensor).device
         self.ir_sensor.mode(5, bytes([0,0,0,0])) # set to appropriate mode
 
         self.ir_segments = ir_segments
@@ -284,6 +285,7 @@ class SensorHandler:
             return velocity calculated based off position the ball was at the last call of the funciton.
             speed in cm/s
         """
+        
         ball = self.ball_data()
         displacement = ball.get("relative_pos") - self.last_ball_pos
         velocity     = displacement / time_since(self.last_speed_check)
@@ -292,7 +294,6 @@ class SensorHandler:
         self.last_speed_check = time_ns()
 
         return velocity * SECOND # convert from cm/ns to cm/s
-
 
     # Motion 
     def rotation(self):
@@ -314,7 +315,7 @@ class SensorHandler:
         # because accelerometer returns cm/s²
         dtime = time_since(self.pupdate_position) / SECOND
         self.pupdate_position = time_ns()
-
+        
         avg = (2 * self.pvelocity + self.acceleration_2d() * dtime) / 2
         return avg * dtime
 
