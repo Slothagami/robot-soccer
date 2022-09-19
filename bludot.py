@@ -206,7 +206,7 @@ class SensorHandler:
         self.pvelocity = 0
         self.pupdate_position = time_ns()
 
-        self.pball_pos        = self.ball_data().get("relative_pos")
+        self.last_ball_pos    = self.ball_data().get("relative_pos")
         self.last_speed_check = time_ns()
 
         # make sure The DIP switches on the disk are configured correctly: ON ON OFF
@@ -279,23 +279,19 @@ class SensorHandler:
             "ball_found":   strength != 0
         }
 
-    def ball_velocity(self):
+    def ball_velocity(self) -> complex:
         """
-            returns: (speed, direction)
+            return velocity calculated based off position the ball was at the last call of the funciton.
             speed in cm/s
         """
         ball = self.ball_data()
-        
-        # convert to rectangular cordinates for the balls relative position
-        ball_pos     = ball.get("relative_pos")
-        displacement = ball_pos - self.pball_pos
-        speed        = abs(displacement) / time_since(self.last_speed_check)
-        direction    = phase(displacement)
+        displacement = ball.get("relative_pos") - self.last_ball_pos
+        velocity     = displacement / time_since(self.last_speed_check)
 
-        self.pball_pos        = ball_pos
+        self.last_ball_pos    = ball.get("relative_pos")
         self.last_speed_check = time_ns()
 
-        return speed * SECOND, direction
+        return velocity * SECOND # convert from cm/ns to cm/s
 
 
     # Motion 
@@ -316,7 +312,7 @@ class SensorHandler:
         """Delta position in cm calculated based on acceleration"""
         # time in seconds, to cancel the units so we get cm as result
         # because accelerometer returns cm/s²
-        dtime = time_since(self.pupdate_position) / 1e9 
+        dtime = time_since(self.pupdate_position) / SECOND
         self.pupdate_position = time_ns()
 
         avg = (2 * self.pvelocity + self.acceleration_2d() * dtime) / 2
