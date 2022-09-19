@@ -6,18 +6,19 @@ from cmath      import *
 import hub as hubdata
 
 # TODO
-    # Get git installed on this computer
-        # .gitignore: __pycache__
+    # test displacement tracking accuracy
+    # act on measured postiton
     # balance larger back turn params
-
-    # Test Bluetooth class
-    # Action.intercept
+    # Action.intercept (Goalie AI)
+        # Predict ball motion
 
 #region Globals
 LEFT     = pi/2
 RIGHT    = -LEFT
 FORWARD  = 0
 BACKWARD = pi
+
+SECOND = 1e9 # nanoseconds in a second
 
 dataports = {
     "A": hubdata.port.A, "B": hubdata.port.B,
@@ -205,6 +206,9 @@ class SensorHandler:
         self.pvelocity = 0
         self.pupdate_position = time_ns()
 
+        self.pball_pos        = self.ball_data().get("relative_pos")
+        self.last_speed_check = time_ns()
+
         # make sure The DIP switches on the disk are configured correctly: ON ON OFF
         self.ir_sensor = dataports.get(distance_sensor).device
         self.ir_sensor.mode(5, bytes([0,0,0,0])) # set to appropriate mode
@@ -252,7 +256,10 @@ class SensorHandler:
         return -angle
 
     def ball_data(self):
-        """Returns Interpreted Data about the ball's relative position"""
+        """
+            Returns dict with the following keys:
+            "angle", "raw_angle", "strength", "distance", "relative_pos", "ball_found"
+        """
         ir_data  = self.ir_data()
         strength = ir_data.get("signal_strength")
 
@@ -262,13 +269,34 @@ class SensorHandler:
         else:
             distance = None
 
+        direction = self.ball_direction(ir_data)
         return {
-            "raw_angle":    self.ball_direction(ir_data),
+            "raw_angle":    direction,
             "angle":        self.lerp_bdir,
             "strength":     strength,
             "distance":     distance,
+            "relative_pos": exp(complex(0, direction)) * distance,
             "ball_found":   strength != 0
         }
+
+    def ball_velocity(self):
+        """
+            returns: (speed, direction)
+            speed in cm/s
+        """
+        ball = self.ball_data()
+        
+        # convert to rectangular cordinates for the balls relative position
+        ball_pos     = ball.get("relative_pos")
+        displacement = ball_pos - self.pball_pos
+        speed        = abs(displacement) / time_since(self.last_speed_check)
+        direction    = phase(displacement)
+
+        self.pball_pos        = ball_pos
+        self.last_speed_check = time_ns()
+
+        return speed * SECOND, direction
+
 
     # Motion 
     def rotation(self):
