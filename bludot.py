@@ -1,11 +1,9 @@
 # LEGO type:standard slot:0 autostart
-# COM11 blu COM 15 Dot
 from mindstorms import MSHub, Motor, ColorSensor
 from time       import time_ns
 from math       import radians
 from cmath      import *
-import ustruct as struct
-import hub     as hubdata
+import hub as hubdata
 
 #region Globals
 LEFT     = pi/2
@@ -72,6 +70,11 @@ def time_since(time):
 def screen(data):
     hub.light_matrix.show(data)
 
+def default_screen():
+    if bot == DOT:
+        return Screen.dot 
+    return Screen.blu
+
 class Screen:
     alert   = "40904:40904:40904:00000:40904"
     amazed  = "09090:00000:09990:09990:09990"
@@ -81,14 +84,20 @@ class Screen:
     sqirm   = "00000:92029:29092:00000:09990"
     serious = "00000:90009:99099:00000:09990"
     off     = "00000:00000:00000:00000:00000"
-    square  = "00000:09990:09990:09990:00000"
+
+    dot = "00000:08980:09990:08980:00000"
+    blu = "99099:99099:99099:99999:09998"
 
 #endregion
 
 #region Params
+BLU = ""
+DOT = "A8:E2:C1:9A:7C:6B"
+
 params = {
-    "speed":             1,           # global speed
-    "speed_norm":        Norm.square, # normilisation for final motor powers
+    "speed":             1,
+    "dot_speed":         .9,          # Dot's speed in Attacker mode
+    "speed_norm":        Norm.square, # normilisation for final speed
 
     "wheel_radius":      3.175,       # cm
     "wheel_error":       .5,
@@ -108,6 +117,11 @@ angle_params = ["turn_deadspace", "angle_deadzone"]
 for param in angle_params:
     params[param] = radians(params.get(param))
 #endregion
+
+class Bluetooth:
+    @staticmethod
+    def device_adress():
+        return hubdata.bluetooth.info().get("mac_addr")
 
 class VectorMovementSystem:
     def __init__(self, motors: str, wheel_angle=45):
@@ -319,24 +333,25 @@ class Action:
             )
 
     def startup():
-        global state, start_time
-        screen(Screen.happy)
+        global state, start_time, last_pos_check
+        screen(default_screen())
 
-        # choose program type
         while True:
             if sensors.right_button():
-                # state = AI.attacker
-                state = AI.test
+                # state = AI.test
+                state = AI.attacker
                 break 
 
             if sensors.left_button():
-                # state = AI.goalie
-                state = AI.test
-                # state = AI.attacker
-                # params["speed"] = .9
+                # state = AI.test
+                state = AI.attacker
+
+                # if bot == DOT:
+                #     state = AI.goalie
+                # else:
+                #     state = AI.attacker
                 break 
 
-        screen(Screen.serious)
         sensors.reset()
         start_time = time_ns()
         last_pos_check = time_ns()
@@ -348,6 +363,7 @@ class Action:
 
 class AI:
     def attacker():
+        if bot == DOT: params["speed"] = params.get("dot_speed")
         Action.chase()
         Action.correct_angle()
 
@@ -369,6 +385,7 @@ class AI:
 hub      = MSHub()
 movement = VectorMovementSystem("BACD")
 sensors  = SensorHandler("E", "F")
+bot      = Bluetooth.device_adress()
 
 start_time = 0
 last_pos_check = 0
