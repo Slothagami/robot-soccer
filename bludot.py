@@ -101,8 +101,8 @@ params = {
     "speed":             1,
     "dot_speed":         .9,          # Dot's speed in Attacker mode
 
-    "wheel_radius":      3.175,       # cm
-    "wheel_error":       radians(30), # min wheel difference to not be counted as moving
+    "wheel_radius":      2.8,        # cm
+    "wheel_error":       radians(18), # min wheel difference to not be counted as moving
 
     "turn_factor":       (2, 1.25),   # (front, behind)
     "turn_deadspace":    radians(10), # angle range that resets turning to 0
@@ -136,6 +136,7 @@ class VectorMovementSystem:
     def reset_motors(self):
         for motor in self.motors:
             motor.set_stop_action("hold")
+            motor.set_degrees_counted(0)
 
     def add_velocity(self, dir, speed=1):
         if dir == None: return
@@ -192,15 +193,14 @@ class VectorMovementSystem:
 
         delta_position = motor_x + motor_y
 
-        self.reset_motors()
+        # self.reset_motors()
 
-        # TODO: Check for consistency with accelerometer movement?
-        
-        # add to position if no lone spinning wheels
-        x1, x2, y1, y2 = counts
-        error_margin = params.get("wheel_error")
-        if aprox_equal(x1, x2, error_margin) and aprox_equal(y1, y2, error_margin):
-            self.position += delta_position
+        # # add to position if no lone spinning wheels
+        # x1, x2, y1, y2 = counts
+        # error_margin = params.get("wheel_error")
+        # if aprox_equal(x1, x2, error_margin) and aprox_equal(y1, y2, error_margin):
+        #     self.position += delta_position
+        self.position = delta_position
 
         return self.position
 
@@ -218,6 +218,9 @@ class SensorHandler:
     def reset(self):
         hub.motion_sensor.reset_yaw_angle()
         self.lerp_bdir = self.ball_direction(self.ir_data())
+
+        movement.position = 0
+        movement.reset_motors()
 
     # Ball
     def interpolate_dir(self):
@@ -334,13 +337,13 @@ class Action:
 
         while True:
             if sensors.right_button():
-                # state = AI.test
-                state = AI.attacker
+                state = AI.test
+                # state = AI.attacker
                 break 
 
             if sensors.left_button():
-                # state = AI.test
-                state = AI.attacker
+                state = AI.test
+                # state = AI.attacker
 
                 # if bot == DOT:
                 #     state = AI.goalie
@@ -370,10 +373,11 @@ class AI:
 
     def test():
         global start_time, last_pos_check
-        if time_since(start_time) < SECOND:
+        Action.correct_angle()
+        if time_since(start_time) < SECOND * .66:
             movement.add_velocity(0)
 
-        if time_since(last_pos_check) > SECOND / 3:
+        if time_since(last_pos_check) > SECOND / 10:
             last_pos_check = time_ns()
             movement.update_position()
             print(movement.position)
