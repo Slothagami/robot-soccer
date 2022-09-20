@@ -13,6 +13,8 @@ RIGHT    = -LEFT
 FORWARD  = 0
 BACKWARD = pi
 
+SECOND = 1e9
+
 dataports = {
     "A": hubdata.port.A, "B": hubdata.port.B,
     "C": hubdata.port.C, "D": hubdata.port.D,
@@ -33,6 +35,15 @@ def lerp(val, targ, amm):
 def clamp(x, minimum, maximum):
     return max(min(x, maximum), minimum)
 
+def average(*args):
+    """*args: average of a list object or of the arguments"""
+    # if first argument is not a number type
+    if not isinstance(args[0], (int, float, complex)): args = args[0]
+    return sum(args) / len(args)
+
+def aprox_equal(a, b, error_margin):
+    return b - error_margin < a < b + error_margin
+    
 class Norm:
     def square(velocity):
         velocity = complex(velocity)
@@ -53,11 +64,8 @@ class Norm:
         else: return velocity / magnitude
 
 # Time Functions
-def time_ms():
-    return time_ns() / 1e6
-
 def time_since(time):
-    return time_ms() - time
+    return time_ns() - time
 #endregion
 
 #region Screen
@@ -82,7 +90,10 @@ params = {
     "speed":             1,           # global speed
     "speed_norm":        Norm.square, # normilisation for final motor powers
 
-    "turn_factor":       (2, 1.25),    # (front, behind) # (2, 1.15)?
+    "wheel_radius":      3.175,       # cm
+    "wheel_error":       .5,
+
+    "turn_factor":       (2, 1.25),   # (front, behind)
     "turn_deadspace":    10,          # angle range that resets turning to 0
 
     "angle_deadzone":    4,           # deadzone size
@@ -105,8 +116,12 @@ class VectorMovementSystem:
         self.velocity     = 0
         self.spin         = 0
         self.wheel_angle  = radians(wheel_angle)
+        self.position     = 0
 
         # reset motor counts
+        self.reset_motors()
+
+    def reset_motors(self):
         for motor in self.motors:
             motor.set_stop_action("hold")
 
@@ -139,6 +154,45 @@ class VectorMovementSystem:
     def stop(self):
         for motor in self.motors:
             motor.stop()
+
+    def update_position(self):
+        counts = []
+        # motors in order (x, -x, y, -y)
+        for n, motor in enumerate(self.motors):
+            counts.append(
+                # flip every other motor (they spin opposite) to align with convention
+                (-1)**n * radians(motor.get_degrees_counted())
+            )
+
+        # motors are now in order (x, x, y, y)
+        # x is 45 degrees axis (measured from +x), and y is 135 degrees axis
+        # average both measusements for more accuracy
+        motor_x = average(counts[:2])
+        motor_y = average(counts[2:])
+
+        # convert to cm
+        wheel_radius = params.get("wheel_radius")
+        motor_x *= wheel_radius
+        motor_y *= wheel_radius
+
+        # measurements are still offset 45 degrees from x axis
+        # convert basis to align with robot
+        motor_x *= exp(complex(0,      self.wheel_angle))
+        motor_y *= exp(complex(0, pi - self.wheel_angle))
+
+        delta_position = motor_x + motor_y
+
+        self.reset_motors()
+
+        # TODO: Check for consistency with accelerometer movement?
+        
+        # add to position if no lone spinning wheels
+        x1, x2, y1, y2 = counts
+        error_margin = params.get("wheel_error")
+        if aprox_equal(x1, x2, error_margin) and aprox_equal(y1, y2, error_margin):
+            self.position += delta_position
+
+        return self.position
 
 class SensorHandler:
     def __init__(self, distance_sensor: str, color_sensor: str, ir_segments=12):
@@ -265,23 +319,27 @@ class Action:
             )
 
     def startup():
-        global state
+        global state, start_time
         screen(Screen.happy)
 
         # choose program type
         while True:
             if sensors.right_button():
-                state = AI.attacker
+                # state = AI.attacker
+                state = AI.test
                 break 
 
             if sensors.left_button():
                 # state = AI.goalie
-                state = AI.attacker
-                params["speed"] = .9
+                state = AI.test
+                # state = AI.attacker
+                # params["speed"] = .9
                 break 
 
         screen(Screen.serious)
         sensors.reset()
+        start_time = time_ns()
+        last_pos_check = time_ns()
 
     def intercept():
         if not sensors.on_line():
@@ -297,10 +355,23 @@ class AI:
         Action.intercept()
         Action.correct_angle()
 
+    def test():
+        global start_time, last_pos_check
+        if time_since(start_time) < SECOND:
+            movement.add_velocity(0)
+
+        if time_since(last_pos_check) > SECOND / 3:
+            last_pos_check = time_ns()
+            movement.update_position()
+            print(movement.position)
+
 #region Init Program
 hub      = MSHub()
 movement = VectorMovementSystem("BACD")
 sensors  = SensorHandler("E", "F")
+
+start_time = 0
+last_pos_check = 0
 
 # Restart loop
 while True:
