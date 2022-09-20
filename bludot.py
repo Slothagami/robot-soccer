@@ -106,7 +106,7 @@ params = {
     "speed":             1,
     "dot_speed":         .9,          # Dot's speed in Attacker mode
 
-    "goal_align_zone":   radians(10), # zone in front of robot where goal alignment is used
+    "goal_align_zone":   radians(20), # zone in front of robot where goal alignment is used
     "goal_align_speed":  .1,
 
     "wheel_radius":      2.8,         # cm
@@ -229,7 +229,7 @@ class SensorHandler:
         hub.motion_sensor.reset_yaw_angle()
         self.lerp_bdir = self.ball_direction(self.ir_data())
 
-        movement.position = 0
+        movement.position = complex(0)
         movement.reset_motors()
 
     # Ball
@@ -351,13 +351,13 @@ class Action:
 
         while True:
             if sensors.right_button():
-                state = AI.test
-                # state = AI.attacker
+                # state = AI.test
+                state = AI.attacker
                 break 
 
             if sensors.left_button():
-                state = AI.test
-                # state = AI.attacker
+                # state = AI.test
+                state = AI.attacker
 
                 # if bot == DOT:
                 #     state = AI.goalie
