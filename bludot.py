@@ -97,25 +97,20 @@ DOT = "A8:E2:C1:9A:7C:6B"
 params = {
     "speed":             1,
     "dot_speed":         .9,          # Dot's speed in Attacker mode
-    "speed_norm":        Norm.square, # normilisation for final speed
 
     "wheel_radius":      3.175,       # cm
-    "wheel_error":       .5,
+    "wheel_error":       radians(30), # min wheel difference to not be counted as moving
 
     "turn_factor":       (2, 1.25),   # (front, behind)
-    "turn_deadspace":    10,          # angle range that resets turning to 0
+    "turn_deadspace":    radians(10), # angle range that resets turning to 0
 
-    "angle_deadzone":    4,           # deadzone size
+    "angle_deadzone":    radians(4),  # deadzone size
     "angle_correct":     .38,         # speed of correction
     "angle_interpolate": .8,          # lerp speed of interpolaton
 
     "force_threshold":   800,         # size of a "significant force"
     "field_brightness":  (17, 40)     # range for brightness of the green carpet
 }
-
-angle_params = ["turn_deadspace", "angle_deadzone"]
-for param in angle_params:
-    params[param] = radians(params.get(param))
 #endregion
 
 class Bluetooth:
@@ -150,7 +145,7 @@ class VectorMovementSystem:
         self.spin = clamp(self.spin, -1, 1)
 
     def move(self):
-        norm = params.get("speed_norm")(self.velocity)
+        norm = Norm.square(self.velocity)
         dx = norm.real
         dy = norm.imag
 
@@ -171,15 +166,13 @@ class VectorMovementSystem:
 
     def update_position(self):
         counts = []
-        # motors in order (x, -x, y, -y)
+        # motors change order (x, -x, y, -y) -> (x, x, y, y)
         for n, motor in enumerate(self.motors):
             counts.append(
-                # flip every other motor (they spin opposite) to align with convention
+                # flip every other motor count (they spin opposite)
                 (-1)**n * radians(motor.get_degrees_counted())
             )
 
-        # motors are now in order (x, x, y, y)
-        # x is 45 degrees axis (measured from +x), and y is 135 degrees axis
         # average both measusements for more accuracy
         motor_x = average(counts[:2])
         motor_y = average(counts[2:])
@@ -189,7 +182,7 @@ class VectorMovementSystem:
         motor_x *= wheel_radius
         motor_y *= wheel_radius
 
-        # measurements are still offset 45 degrees from x axis
+        # measurements are still offset from x axis
         # convert basis to align with robot
         motor_x *= exp(complex(0,      self.wheel_angle))
         motor_y *= exp(complex(0, pi - self.wheel_angle))
