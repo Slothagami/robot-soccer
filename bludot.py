@@ -148,7 +148,7 @@ class VectorMovementSystem:
         for motor in self.motors:
             motor.set_degrees_counted(0)
 
-    def add_velocity(self, dir, speed=1):
+    def add(self, dir, speed=1):
         if dir == None: return
         # speed = clamp(speed, 0, 1) # this not needed?
         dir -= self.wheel_angle
@@ -320,7 +320,7 @@ class Action:
             movement.add_spin(rot * params.get("angle_correct"))
 
     def follow_ball():
-        movement.add_velocity(sensors.ball_data().get("angle"))
+        movement.add(sensors.ball_data().get("angle"))
 
     def chase():
         ball = sensors.ball_data()
@@ -338,12 +338,12 @@ class Action:
             else: turn_ammount = 0
 
             # driving to/around ball
-            movement.add_velocity( ball.get("angle") * turn_ammount )
+            movement.add( ball.get("angle") * turn_ammount )
 
             # align to goal
             if abs(ball.get("angle")) < params.get("goal_align_zone"):
                 align_speed = params.get("goal_align_speed") * sign(movement.position.imag) 
-                movement.add_velocity(LEFT, align_speed)
+                movement.add(LEFT, align_speed)
 
     def startup():
         global state, start_time, last_pos_check
@@ -390,7 +390,7 @@ class AI:
         global start_time, last_pos_check
         Action.correct_angle()
         if time_since(start_time) < SECOND * .66:
-            movement.add_velocity(0)
+            movement.add(0)
 
         if time_since(last_pos_check) > SECOND / 10:
             last_pos_check = time_ns()
