@@ -106,7 +106,10 @@ params = {
     "speed":             1,
     "dot_speed":         .9,          # Dot's speed in Attacker mode
 
-    "wheel_radius":      2.8,        # cm
+    "goal_align_zone":   radians(10), # zone in front of robot where goal alignment is used
+    "goal_align_speed":  .1,
+
+    "wheel_radius":      2.8,         # cm
     "wheel_error":       radians(18), # min wheel difference to not be counted as moving
 
     "turn_factor":       (2, 1.25),   # (front, behind)
@@ -334,9 +337,13 @@ class Action:
                 turn_ammount = lerp(front_turn, back_turn, turn_ammount)
             else: turn_ammount = 0
 
-            movement.add_velocity(
-                ball.get("angle") * turn_ammount
-            )
+            # driving to/around ball
+            movement.add_velocity( ball.get("angle") * turn_ammount )
+
+            # align to goal
+            if abs(ball.get("angle")) < params.get("goal_align_zone"):
+                align_speed = params.get("goal_align_speed") * sign(movement.position.imag) 
+                movement.add_velocity(LEFT, align_speed)
 
     def startup():
         global state, start_time, last_pos_check
