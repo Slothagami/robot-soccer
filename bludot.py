@@ -1,17 +1,11 @@
 # LEGO type:standard slot:0 autostart
+# COM11 blu COM 15 Dot
 from mindstorms import MSHub, Motor, ColorSensor
 from time       import time_ns
 from math       import radians
 from cmath      import *
-import hub as hubdata
-
-# TODO
-    # balance larger back turn params
-
-    # test displacement tracking accuracy
-    # act on measured postiton
-    
-    # Action.intercept (Goalie AI)
+import ustruct as struct
+import hub     as hubdata
 
 #region Globals
 LEFT     = pi/2
@@ -19,9 +13,7 @@ RIGHT    = -LEFT
 FORWARD  = 0
 BACKWARD = pi
 
-SECOND = 1e9 # nanoseconds in a second
-
-ports = {
+dataports = {
     "A": hubdata.port.A, "B": hubdata.port.B,
     "C": hubdata.port.C, "D": hubdata.port.D,
     "E": hubdata.port.E, "F": hubdata.port.F,
@@ -40,15 +32,6 @@ def lerp(val, targ, amm):
 
 def clamp(x, minimum, maximum):
     return max(min(x, maximum), minimum)
-
-def average(*args):
-    """*args: average of a list object or of the arguments"""
-    # if first argument is not a number type
-    if not isinstance(args[0], (int, float, complex)): args = args[0]
-    return sum(args) / len(args)
-
-def aprox_equal(a, b, error_margin):
-    return b - error_margin < a < b + error_margin
 
 class Norm:
     def square(velocity):
@@ -70,8 +53,11 @@ class Norm:
         else: return velocity / magnitude
 
 # Time Functions
+def time_ms():
+    return time_ns() / 1e6
+
 def time_since(time):
-    return time_ns() - time
+    return time_ms() - time
 #endregion
 
 #region Screen
@@ -95,16 +81,13 @@ class Screen:
 params = {
     "speed":             1,           # global speed
     "speed_norm":        Norm.square, # normilisation for final motor powers
-    "wheel_radius":      3.175,       # cm
 
-    "turn_factor":       (2, 1.2),    # (front, behind)
-    "turn_deadspace":    15,          # angle range that resets turning to 0
+    "turn_factor":       (2, 1.25),    # (front, behind) # (2, 1.15)?
+    "turn_deadspace":    10,          # angle range that resets turning to 0
 
     "angle_deadzone":    4,           # deadzone size
     "angle_correct":     .38,         # speed of correction
     "angle_interpolate": .8,          # lerp speed of interpolaton
-
-    "wheel_error":       .1,          # how far apart do the motor readings have to be to call a spinning wheel
 
     "force_threshold":   800,         # size of a "significant force"
     "field_brightness":  (17, 40)     # range for brightness of the green carpet
@@ -115,7 +98,6 @@ for param in angle_params:
     params[param] = radians(params.get(param))
 #endregion
 
-## Functional Classes ##
 class VectorMovementSystem:
     def __init__(self, motors: str, wheel_angle=45):
         """ motors in order: (x, -x, y, -y) """
@@ -123,14 +105,10 @@ class VectorMovementSystem:
         self.velocity     = 0
         self.spin         = 0
         self.wheel_angle  = radians(wheel_angle)
-        self.position     = 0
 
-        self.reset_motors()
-
-    def reset_motors(self):
+        # reset motor counts
         for motor in self.motors:
             motor.set_stop_action("hold")
-            motor.set_degrees_counted(0)
 
     def add_velocity(self, dir, speed=1):
         if dir == None: return
@@ -158,45 +136,6 @@ class VectorMovementSystem:
         self.velocity = 0
         self.spin     = 0
 
-    def update_position(self):
-        counts = []
-        # motors in order (x, -x, y, -y)
-        for n, motor in enumerate(self.motors):
-            counts.append(
-                # flip every other motor (they spin opposite) to align with convention
-                (-1)**n * radians(motor.get_degrees_counted())
-            )
-
-        # motors are now in order (x, x, y, y)
-        # x is 45 degrees axis (measured from +x), and y is 135 degrees axis
-        # average both measusements for more accuracy
-        motor_x = average(counts[:2])
-        motor_y = average(counts[2:])
-
-        # convert to cm
-        wheel_radius = params.get("wheel_radius")
-        motor_x *= wheel_radius
-        motor_y *= wheel_radius
-
-        # measurements are still offset 45 degrees from x axis
-        # convert basis to align with robot
-        motor_x *= exp(complex(0,      self.wheel_angle))
-        motor_y *= exp(complex(0, pi - self.wheel_angle))
-
-        delta_position = motor_x + motor_y
-
-        self.reset_motors()
-
-        # TODO: Check for consistency with accelerometer movement?
-        
-        # add to position if no lone spinning wheels
-        x1, x2, y1, y2 = counts
-        error_margin = params.get("wheel_error")
-        if aprox_equal(x1, x2, error_margin) and aprox_equal(y1, y2, error_margin):
-            self.position += delta_position
-
-        return self.position
-
     def stop(self):
         for motor in self.motors:
             motor.stop()
@@ -204,21 +143,17 @@ class VectorMovementSystem:
 class SensorHandler:
     def __init__(self, distance_sensor: str, color_sensor: str, ir_segments=12):
         self.color = ColorSensor(color_sensor)
-        self.pvelocity = 0
-        self.pupdate_position = time_ns()
-
-        self.last_ball_pos    = self.ball_data().get("relative_pos")
-        self.last_speed_check = time_ns()
 
         # make sure The DIP switches on the disk are configured correctly: ON ON OFF
-        self.ir_sensor = ports.get(distance_sensor).device
+        self.ir_sensor = dataports.get(distance_sensor).device
         self.ir_sensor.mode(5, bytes([0,0,0,0])) # set to appropriate mode
 
         self.ir_segments = ir_segments
-        self.lerp_bdir = self.ball_direction(self.ir_data())
+        self.reset()
 
     def reset(self):
         hub.motion_sensor.reset_yaw_angle()
+        self.lerp_bdir = self.ball_direction(self.ir_data())
 
     # Ball
     def interpolate_dir(self):
@@ -257,10 +192,7 @@ class SensorHandler:
         return -angle
 
     def ball_data(self):
-        """
-            Returns dict with the following keys:
-            "angle", "raw_angle", "strength", "distance", "relative_pos", "ball_found"
-        """
+        """Returns Interpreted Data about the ball's relative position"""
         ir_data  = self.ir_data()
         strength = ir_data.get("signal_strength")
 
@@ -270,30 +202,13 @@ class SensorHandler:
         else:
             distance = None
 
-        direction = self.ball_direction(ir_data)
         return {
-            "raw_angle":    direction,
+            "raw_angle":    self.ball_direction(ir_data),
             "angle":        self.lerp_bdir,
             "strength":     strength,
             "distance":     distance,
-            "relative_pos": exp(complex(0, direction)) * distance,
             "ball_found":   strength != 0
         }
-
-    def ball_velocity(self) -> complex:
-        """
-            return velocity calculated based off position the ball was at the last call of the funciton.
-            speed in cm/s
-        """
-        
-        ball = self.ball_data()
-        displacement = ball.get("relative_pos") - self.last_ball_pos
-        velocity     = displacement / time_since(self.last_speed_check)
-
-        self.last_ball_pos    = ball.get("relative_pos")
-        self.last_speed_check = time_ns()
-
-        return velocity * SECOND # convert from cm/ns to cm/s
 
     # Motion 
     def rotation(self):
@@ -304,20 +219,6 @@ class SensorHandler:
         x, z, y = hubdata.motion.accelerometer()
         # Y is flipped because gravity (downward) is read as positive
         return -x, -y, z # x is flipped in reading for some reason
-
-    def acceleration_2d(self):
-        x, y, z = self.acceleration()
-        return complex(x, z)
-
-    def acc_delta_pos(self):
-        """Delta position in cm calculated based on acceleration"""
-        # time in seconds, to cancel the units so we get cm as result
-        # because accelerometer returns cm/s²
-        dtime = time_since(self.pupdate_position) / SECOND
-        self.pupdate_position = time_ns()
-        
-        avg = (2 * self.pvelocity + self.acceleration_2d() * dtime) / 2
-        return avg * dtime
 
     # Environment
     def brightness(self):
@@ -330,7 +231,7 @@ class SensorHandler:
 
     def left_button(self):
         return hub.left_button.was_pressed()
-
+    
     def right_button(self):
         return hub.right_button.was_pressed()
 
@@ -376,8 +277,7 @@ class Action:
             if sensors.left_button():
                 # state = AI.goalie
                 state = AI.attacker
-
-                params["speed_norm"] = Norm.circle
+                params["speed"] = .9
                 break 
 
         screen(Screen.serious)
@@ -408,7 +308,6 @@ while True:
 
     # In-game Loop
     while True:
-        movement.update_position()
         state()
         sensors.interpolate_dir()
         movement.move()
