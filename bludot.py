@@ -67,11 +67,11 @@ def time_since(time):
 #endregion
 
 #region Screen
-def screen(image):
-    hub.light_matrix.show(image)
-
-def animation(animation, fps=14, loop=True):
-    hub.light_matrix.start_animation(animation, fps, loop)
+def screen(data, fps=14, loop=True):
+    if type(data) is str:
+        hub.light_matrix.show(data)
+    else:
+        hub.light_matrix.start_animation(data, fps, loop)
 
 def bot_screen():
     if bot == DOT:
@@ -85,8 +85,9 @@ def bot_loading():
 
 class Screen:
     off = "00000:00000:00000:00000:00000"
-    dot = "00000:09990:09990:09990:00000"
     blu = "00000:09090:09090:00990:00000"
+    dot = "00000:09990:09990:09990:00000"
+    dot_shield = "00000:09090:09990:00900:00000"
 
     dot_load = ['70000:59990:09990:09990:00000', '57000:09990:09990:09990:00000', '05700:09990:09990:09990:00000', '00570:09990:09990:09990:00000', '00057:09990:09990:09990:00000', '00005:09997:09990:09990:00000', '00000:09995:09997:09990:00000', '00000:09990:09995:09997:00000', '00000:09990:09990:09995:00007', '00000:09990:09990:09990:00075', '00000:09990:09990:09990:00750', '00000:09990:09990:09990:07500', '00000:09990:09990:09990:75000', '00000:09990:09990:79990:50000', '00000:09990:79990:59990:00000', '00000:79990:59990:09990:00000']
     blu_load = ['70000:59090:09090:00990:00000', '57000:09090:09090:00990:00000', '05700:09090:09090:00990:00000', '00570:09090:09090:00990:00000', '00057:09090:09090:00990:00000', '00005:09097:09090:00990:00000', '00000:09095:09097:00990:00000', '00000:09090:09095:00997:00000', '00000:09090:09090:00995:00007', '00000:09090:09090:00990:00075', '00000:09090:09090:00990:00750', '00000:09090:09090:00990:07500', '00000:09090:09090:00990:75000', '00000:09090:09090:70990:50000', '00000:09090:79090:50990:00000', '00000:79090:59090:00990:00000']
@@ -94,8 +95,12 @@ class Screen:
 #endregion
 
 #region Params
-BLU = ""
-DOT = "A8:E2:C1:9A:7C:6B"
+HUBS = [
+    "A8:E2:C1:9A:7C:6B", 
+    ""
+]
+BLU = HUBS[1]
+DOT = HUBS[0]
 
 params = {
     "speed":             1,
@@ -131,11 +136,13 @@ class VectorMovementSystem:
         self.position     = 0
 
         # reset motor counts
+        for motor in self.motors:
+            motor.set_stop_action("hold")
+
         self.reset_motors()
 
     def reset_motors(self):
         for motor in self.motors:
-            motor.set_stop_action("hold")
             motor.set_degrees_counted(0)
 
     def add_velocity(self, dir, speed=1):
@@ -199,7 +206,7 @@ class VectorMovementSystem:
         # x1, x2, y1, y2 = counts
         # error_margin = params.get("wheel_error")
         # if aprox_equal(x1, x2, error_margin) and aprox_equal(y1, y2, error_margin):
-        #     self.position += delta_position
+        # self.position += delta_position
         self.position = delta_position
 
         return self.position
@@ -333,7 +340,7 @@ class Action:
 
     def startup():
         global state, start_time, last_pos_check
-        animation(bot_loading())
+        screen(bot_loading())
 
         while True:
             if sensors.right_button():
@@ -368,6 +375,7 @@ class AI:
         Action.correct_angle()
 
     def goalie():
+        screen(Screen.dot_shield)
         Action.intercept()
         Action.correct_angle()
 
@@ -387,6 +395,8 @@ hub      = MSHub()
 movement = VectorMovementSystem("BACD")
 sensors  = SensorHandler("E", "F")
 bot      = Bluetooth.device_adress()
+
+print(bot) # For switching out the hub
 
 start_time = 0
 last_pos_check = 0
