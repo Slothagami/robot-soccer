@@ -97,22 +97,22 @@ class Screen:
 #region Params
 HUBS = [
     "A8:E2:C1:9A:7C:6B", 
-    ""
+    "38:0B:3C:AA:AA:CD"
 ]
 BLU = HUBS[1]
 DOT = HUBS[0]
 
 params = {
     "speed":             1,
-    "dot_speed":         .9,          # Dot's speed in Attacker mode
+    "dot_speed":         .95,          # Dot's speed in Attacker mode
 
-    "goal_align_zone":   radians(20), # zone in front of robot where goal alignment is used
-    "goal_align_speed":  .1,
+    "goal_align_zone":   radians(35), # zone in front of robot where goal alignment is used
+    "goal_align_speed":  .01,
 
     "wheel_radius":      2.8,         # cm
     "wheel_error":       radians(18), # min wheel difference to not be counted as moving
 
-    "turn_factor":       (2, 1.25),   # (front, behind)
+    "turn_factor":       (2, 1.3),   # (front, behind)
     "turn_deadspace":    radians(10), # angle range that resets turning to 0
 
     "angle_deadzone":    radians(4),  # deadzone size
@@ -203,7 +203,7 @@ class VectorMovementSystem:
 
         delta_position = motor_x + motor_y
 
-        # self.reset_motors()
+        self.reset_motors()
 
         # # add to position if no lone spinning wheels
         # x1, x2, y1, y2 = counts
@@ -341,9 +341,10 @@ class Action:
             movement.add( ball.get("angle") * turn_ammount )
 
             # align to goal
-            if abs(ball.get("angle")) < params.get("goal_align_zone"):
-                align_speed = params.get("goal_align_speed") * sign(movement.position.imag) 
-                movement.add(LEFT, align_speed)
+            # movement.update_position()
+            # if abs(ball.get("angle")) < params.get("goal_align_zone"):
+            #     align_speed = params.get("goal_align_speed") * movement.position.imag
+            #     movement.add(LEFT, align_speed)
 
     def startup():
         global state, start_time, last_pos_check
@@ -351,13 +352,13 @@ class Action:
 
         while True:
             if sensors.right_button():
-                # state = AI.test
-                state = AI.attacker
+                state = AI.test
+                # state = AI.attacker
                 break 
 
             if sensors.left_button():
-                # state = AI.test
-                state = AI.attacker
+                state = AI.test
+                # state = AI.attacker
 
                 # if bot == DOT:
                 #     state = AI.goalie
@@ -380,6 +381,8 @@ class AI:
         if bot == DOT: params["speed"] = params.get("dot_speed")
         Action.chase()
         Action.correct_angle()
+
+        # print(movement.position.imag)
 
     def goalie():
         screen(Screen.dot_shield)
