@@ -137,6 +137,7 @@ class VectorMovementSystem:
         self.spin         = 0
         self.wheel_angle  = radians(wheel_angle)
         self.position     = 0
+        self.motor_angles = [0, 0, 0, 0]
 
         # reset motor counts
         for motor in self.motors:
@@ -145,6 +146,7 @@ class VectorMovementSystem:
         self.reset_motors()
 
     def reset_motors(self):
+        self.motor_angles = [0, 0, 0, 0]
         for motor in self.motors:
             motor.set_degrees_counted(0)
 
@@ -187,9 +189,11 @@ class VectorMovementSystem:
                 (-1)**n * radians(motor.get_degrees_counted())
             )
 
+        delta_counts = [count - pcount for count, pcount in zip(counts, self.motor_angles)]
+
         # average both measusements for more accuracy
-        motor_x = average(counts[:2])
-        motor_y = average(counts[2:])
+        motor_x = average(delta_counts[:2])
+        motor_y = average(delta_counts[2:])
 
         # convert to cm
         wheel_radius = params.get("wheel_radius")
@@ -203,14 +207,13 @@ class VectorMovementSystem:
 
         delta_position = motor_x + motor_y
 
-        self.reset_motors()
-
         # # add to position if no lone spinning wheels
         # x1, x2, y1, y2 = counts
         # error_margin = params.get("wheel_error")
         # if aprox_equal(x1, x2, error_margin) and aprox_equal(y1, y2, error_margin):
-        # self.position += delta_position
-        self.position = delta_position
+        self.position += delta_position
+        # self.position = delta_position
+        self.motor_angles = counts
 
         return self.position
 
@@ -348,6 +351,7 @@ class Action:
 
     def startup():
         global state, start_time, last_pos_check
+        print("Running startup.")
         screen(bot_loading())
 
         while True:
@@ -382,8 +386,6 @@ class AI:
         Action.chase()
         Action.correct_angle()
 
-        # print(movement.position.imag)
-
     def goalie():
         screen(Screen.dot_shield)
         Action.intercept()
@@ -395,7 +397,7 @@ class AI:
         if time_since(start_time) < SECOND * .66:
             movement.add(0)
 
-        if time_since(last_pos_check) > SECOND / 10:
+        if time_since(last_pos_check) > SECOND / 20:
             last_pos_check = time_ns()
             movement.update_position()
             print(movement.position)
