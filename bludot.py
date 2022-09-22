@@ -96,11 +96,14 @@ class Screen:
 
 #region Params
 HUBS = [
-    "A8:E2:C1:9A:7C:6B", 
-    "38:0B:3C:AA:AA:CD"
+    "38:0B:3C:AA:AA:CD", # Blu
+    "A8:E2:C1:9A:7C:6B", # Dot
+    "A8:E2:C1:95:24:D9"  # Spare Hub
 ]
-BLU = HUBS[1]
-DOT = HUBS[0]
+BLU = HUBS[0]
+DOT = HUBS[1]
+
+EXPORT_POSITION = True
 
 params = {
     "speed":             1,
@@ -110,9 +113,9 @@ params = {
     "goal_align_speed":  .01,
 
     "wheel_radius":      2.8,         # cm
-    "wheel_error":       radians(18), # min wheel difference to not be counted as moving
+    "wheel_error":       radians(100), # min wheel difference to not be counted as moving
 
-    "turn_factor":       (2, 1.3),   # (front, behind)
+    "turn_factor":       (2, 1.3),    # (front, behind)
     "turn_deadspace":    radians(10), # angle range that resets turning to 0
 
     "angle_deadzone":    radians(4),  # deadzone size
@@ -123,6 +126,15 @@ params = {
     "field_brightness":  (17, 40)     # range for brightness of the green carpet
 }
 #endregion
+
+class Port:
+    def __init__(self):
+        self.com = hubdata.BT_VCP()
+
+    def send(self, data):
+        data = str(data)
+        if "~" in data: raise Exception('Sending data cannot include "~"')
+        self.com.write("~" + data + "~")
 
 class Bluetooth:
     @staticmethod
@@ -207,12 +219,16 @@ class VectorMovementSystem:
 
         delta_position = motor_x + motor_y
 
-        # # add to position if no lone spinning wheels
-        # x1, x2, y1, y2 = counts
-        # error_margin = params.get("wheel_error")
-        # if aprox_equal(x1, x2, error_margin) and aprox_equal(y1, y2, error_margin):
-        self.position += delta_position
-        # self.position = delta_position
+        # add to position if no lone spinning wheels
+        x1, x2, y1, y2 = delta_counts
+        error_margin = params.get("wheel_error")
+        if aprox_equal(x1, x2, error_margin) and aprox_equal(y1, y2, error_margin):
+            self.position += delta_position
+            if EXPORT_POSITION: port.send(self.position)
+        elif EXPORT_POSITION: 
+            port.send("STUTTER")
+            port.send(self.position)
+
         self.motor_angles = counts
 
         return self.position
@@ -356,13 +372,13 @@ class Action:
 
         while True:
             if sensors.right_button():
-                state = AI.test
-                # state = AI.attacker
+                # state = AI.test
+                state = AI.attacker
                 break 
 
             if sensors.left_button():
-                state = AI.test
-                # state = AI.attacker
+                # state = AI.test
+                state = AI.attacker
 
                 # if bot == DOT:
                 #     state = AI.goalie
@@ -382,9 +398,15 @@ class Action:
 
 class AI:
     def attacker():
+        global last_pos_check
         if bot == DOT: params["speed"] = params.get("dot_speed")
         Action.chase()
         Action.correct_angle()
+
+        if EXPORT_POSITION:
+            if time_since(last_pos_check) > SECOND / 4:
+                movement.update_position()
+                last_pos_check = time_ns()
 
     def goalie():
         screen(Screen.dot_shield)
@@ -407,6 +429,7 @@ hub      = MSHub()
 movement = VectorMovementSystem("BACD")
 sensors  = SensorHandler("E", "F")
 bot      = Bluetooth.device_adress()
+port     = Port()
 
 print(bot) # For switching out the hub
 
