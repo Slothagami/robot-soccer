@@ -103,7 +103,7 @@ HUBS = [
 BLU = HUBS[0]
 DOT = HUBS[1]
 
-EXPORT_POSITION = True
+EXPORT_POSITION = False
 
 params = {
     "speed":             1,
@@ -403,10 +403,20 @@ class AI:
         Action.chase()
         Action.correct_angle()
 
-        if EXPORT_POSITION:
-            if time_since(last_pos_check) > SECOND / 4:
-                movement.update_position()
-                last_pos_check = time_ns()
+        # if EXPORT_POSITION:
+        #     if time_since(last_pos_check) > SECOND / 4:
+        #         movement.update_position()
+        #         last_pos_check = time_ns()
+        if time_since(last_pos_check) > SECOND / 4:
+            movement.update_position()
+            last_pos_check = time_ns()
+            print(movement.position)
+
+            # show side of field in position on screen
+            screen(bot_screen())
+            if sign(movement.position.imag) == 1:
+                hubdata.display.pixel(4, 4, 9)
+            else: hubdata.display.pixel(0, 4, 9)
 
     def goalie():
         screen(Screen.dot_shield)
