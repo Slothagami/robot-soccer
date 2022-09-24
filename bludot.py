@@ -104,16 +104,17 @@ BLU = HUBS[0]
 DOT = HUBS[1]
 
 EXPORT_POSITION = False
+SHOW_POSITION = True
 
 params = {
     "speed":             1,
-    "dot_speed":         .95,          # Dot's speed in Attacker mode
+    "dot_speed":         .95,         # Dot's speed in Attacker mode
 
     "goal_align_zone":   radians(35), # zone in front of robot where goal alignment is used
     "goal_align_speed":  .01,
 
     "wheel_radius":      2.8,         # cm
-    "wheel_error":       radians(100), # min wheel difference to not be counted as moving
+    "wheel_error":       radians(25), # error margin of comparison
 
     "turn_factor":       (2, 1.3),    # (front, behind)
     "turn_deadspace":    radians(10), # angle range that resets turning to 0
@@ -220,16 +221,27 @@ class VectorMovementSystem:
         delta_position = motor_x + motor_y
 
         # add to position if no lone spinning wheels
+        stutter = False
         x1, x2, y1, y2 = delta_counts
         error_margin = params.get("wheel_error")
         if aprox_equal(x1, x2, error_margin) and aprox_equal(y1, y2, error_margin):
             self.position += delta_position
             if EXPORT_POSITION: port.send(self.position)
-        elif EXPORT_POSITION: 
-            port.send("STUTTER")
-            port.send(self.position)
+        else:
+            stutter = True
+            if EXPORT_POSITION: 
+                port.send("STUTTER")
+                port.send(self.position)
 
         self.motor_angles = counts
+
+        # display status
+        # show side of field in position on screen
+        if SHOW_POSITION:
+            screen(bot_screen())
+            x = 4 if sign(movement.position.imag) == 1 else 0
+            hubdata.display.pixel(x, 4, 9)
+            if stutter: hubdata.display.pixel(2, 4, 9)
 
         return self.position
 
@@ -407,16 +419,10 @@ class AI:
         #     if time_since(last_pos_check) > SECOND / 4:
         #         movement.update_position()
         #         last_pos_check = time_ns()
-        if time_since(last_pos_check) > SECOND / 4:
+        if time_since(last_pos_check) > SECOND / 20:
             movement.update_position()
             last_pos_check = time_ns()
             print(movement.position)
-
-            # show side of field in position on screen
-            screen(bot_screen())
-            if sign(movement.position.imag) == 1:
-                hubdata.display.pixel(4, 4, 9)
-            else: hubdata.display.pixel(0, 4, 9)
 
     def goalie():
         screen(Screen.dot_shield)
