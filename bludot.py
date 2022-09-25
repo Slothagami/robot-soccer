@@ -389,7 +389,7 @@ class Action:
 
         screen(bot_screen())
         sensors.reset()
-        start_time = time_ns()
+        start_time     = time_ns()
         last_pos_check = time_ns()
 
     def intercept():
@@ -420,17 +420,6 @@ class AI:
         screen(Screen.dot_shield)
         Action.intercept()
         Action.correct_angle()
-
-    def test():
-        global start_time, last_pos_check
-        Action.correct_angle()
-        if time_since(start_time) < SECOND * .66:
-            movement.add(0)
-
-        if time_since(last_pos_check) > SECOND / 20:
-            last_pos_check = time_ns()
-            movement.update_position()
-            print(movement.position)
 
 #region Init Program
 hub      = MSHub()
