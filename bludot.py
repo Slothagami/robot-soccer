@@ -109,7 +109,7 @@ params = {
     "speed":             1,
     "dot_speed":         .95,         # Dot's speed in Attacker mode
 
-    "field_width":       182,         # cm 
+    "field_size":        (182, 243),  # cm 
     "goal_align_zone":   radians(35), # zone in front of robot where goal alignment is used
     "goal_align_speed":  .01,
 
@@ -225,7 +225,7 @@ class VectorMovementSystem:
         self.motor_angles = counts
 
         # clamp position to field size to account for walls
-        field_half = params.get("field_width")/2
+        field_half = params.get("field_size")[0] / 2
         self.position = complex(
             self.position.real, 
             clamp(self.position.imag, -field_half, field_half)
@@ -235,7 +235,7 @@ class VectorMovementSystem:
         # show side of field in position on screen
         if SHOW_POSITION:
             screen(bot_screen())
-            x = 4 if sign(movement.position.imag) == 1 else 0 # set this to a range distance from center?
+            x = 4 if sign(self.position.imag) == 1 else 0 # set this to a range distance from center?
             hubdata.display.pixel(x, 4, 9)
 
         return self.position
@@ -366,12 +366,6 @@ class Action:
             # driving to/around ball
             movement.add( ball.get("angle") * turn_ammount )
 
-            # align to goal
-            # movement.update_position()
-            # if abs(ball.get("angle")) < params.get("goal_align_zone"):
-            #     align_speed = params.get("goal_align_speed") * movement.position.imag
-            #     movement.add(LEFT, align_speed)
-
     def startup():
         global state, start_time, last_pos_check
         print("Running startup.")
@@ -379,13 +373,13 @@ class Action:
 
         while True:
             if sensors.right_button():
-                # state = AI.test
                 state = AI.attacker
                 break 
 
             if sensors.left_button():
-                # state = AI.test
                 state = AI.attacker
+                if bot == DOT: 
+                    params["speed"] = params.get("dot_speed")
 
                 # if bot == DOT:
                 #     state = AI.goalie
@@ -403,10 +397,15 @@ class Action:
             # move horizontally to the ball's predicted location
             pass
 
+    def goal_align():
+        ball = sensors.ball_data()
+        if abs(ball.get("angle")) < params.get("goal_align_zone"):
+            align_speed = params.get("goal_align_speed") * movement.position.imag
+            movement.add(LEFT, align_speed)
+
 class AI:
     def attacker():
         global last_pos_check
-        if bot == DOT: params["speed"] = params.get("dot_speed")
         Action.chase()
         Action.correct_angle()
 
@@ -414,6 +413,8 @@ class AI:
             movement.update_position()
             last_pos_check = time_ns()
             print(movement.position)
+
+        Action.goal_align()
 
     def goalie():
         screen(Screen.dot_shield)
