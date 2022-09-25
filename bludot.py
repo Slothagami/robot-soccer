@@ -103,13 +103,13 @@ HUBS = [
 BLU = HUBS[0]
 DOT = HUBS[1]
 
-EXPORT_POSITION = False
 SHOW_POSITION = True
 
 params = {
     "speed":             1,
     "dot_speed":         .95,         # Dot's speed in Attacker mode
 
+    "field_width":       182,         # cm 
     "goal_align_zone":   radians(35), # zone in front of robot where goal alignment is used
     "goal_align_speed":  .01,
 
@@ -221,27 +221,22 @@ class VectorMovementSystem:
         delta_position = motor_x + motor_y
 
         # add to position if no lone spinning wheels
-        stutter = False
-        x1, x2, y1, y2 = delta_counts
-        error_margin = params.get("wheel_error")
-        if aprox_equal(x1, x2, error_margin) and aprox_equal(y1, y2, error_margin):
-            self.position += delta_position
-            if EXPORT_POSITION: port.send(self.position)
-        else:
-            stutter = True
-            if EXPORT_POSITION: 
-                port.send("STUTTER")
-                port.send(self.position)
-
+        self.position += delta_position
         self.motor_angles = counts
+
+        # clamp position to field size to account for walls
+        field_half = params.get("field_width")/2
+        self.position = complex(
+            self.position.real, 
+            clamp(self.position.imag, -field_half, field_half)
+        )
 
         # display status
         # show side of field in position on screen
         if SHOW_POSITION:
             screen(bot_screen())
-            x = 4 if sign(movement.position.imag) == 1 else 0
+            x = 4 if sign(movement.position.imag) == 1 else 0 # set this to a range distance from center?
             hubdata.display.pixel(x, 4, 9)
-            if stutter: hubdata.display.pixel(2, 4, 9)
 
         return self.position
 
@@ -415,11 +410,7 @@ class AI:
         Action.chase()
         Action.correct_angle()
 
-        # if EXPORT_POSITION:
-        #     if time_since(last_pos_check) > SECOND / 4:
-        #         movement.update_position()
-        #         last_pos_check = time_ns()
-        if time_since(last_pos_check) > SECOND / 20:
+        if time_since(last_pos_check) > SECOND / 30:
             movement.update_position()
             last_pos_check = time_ns()
             print(movement.position)
