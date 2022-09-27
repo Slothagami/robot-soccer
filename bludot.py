@@ -109,9 +109,9 @@ params = {
     "speed":             1,
     "dot_speed":         .95,         # Dot's speed in Attacker mode
 
-    "field_size":        (182, 243),  # cm 
-    "goal_align_zone":   radians(35), # zone in front of robot where goal alignment is used
-    "goal_align_speed":  .01,
+    "field_size":        (150, 170), #(182, 243),  # cm 
+    "goal_align_zone":   radians(50), # zone in front of robot where goal alignment is used
+    "goal_align_speed":  .1,
 
     "wheel_radius":      2.8,         # cm
     "wheel_error":       radians(25), # error margin of comparison
@@ -127,15 +127,6 @@ params = {
     "field_brightness":  (17, 40)     # range for brightness of the green carpet
 }
 #endregion
-
-class Port:
-    def __init__(self):
-        self.com = hubdata.BT_VCP()
-
-    def send(self, data):
-        data = str(data)
-        if "~" in data: raise Exception('Sending data cannot include "~"')
-        self.com.write("~" + data + "~")
 
 class Bluetooth:
     @staticmethod
@@ -350,21 +341,18 @@ class Action:
 
     def chase():
         ball = sensors.ball_data()
+        if not ball.get("ball_found"): return
+        if ball.get("angle") is None:  return
         
         # check for ball before moving
-        if ball.get("ball_found") and ball.get("angle") is not None:
-            # ajust angle dynamically, bigger factor = wider curves,
-            # shrink it when ball is behind to make the curve so its more compact
-            # zero when its close to in front, so it doesn't amplify errors in the angle
-            if abs(ball.get("angle")) >= params.get("turn_deadspace"):
-                front_turn, back_turn = params.get("turn_factor")
+        if abs(ball.get("angle")) >= params.get("turn_deadspace"):
+            front_turn, back_turn = params.get("turn_factor")
 
-                turn_ammount = abs(ball.get("angle")) / pi
-                turn_ammount = lerp(front_turn, back_turn, turn_ammount)
-            else: turn_ammount = 0
+            turn_ammount = abs(ball.get("angle")) / pi
+            turn_ammount = lerp(front_turn, back_turn, turn_ammount)
+        else: turn_ammount = 0
 
-            # driving to/around ball
-            movement.add( ball.get("angle") * turn_ammount )
+        movement.add( ball.get("angle") * turn_ammount )
 
     def startup():
         global state, start_time, last_pos_check
@@ -409,12 +397,12 @@ class AI:
         Action.chase()
         Action.correct_angle()
 
-        if time_since(last_pos_check) > SECOND / 30:
-            movement.update_position()
-            last_pos_check = time_ns()
-            print(movement.position)
+        # if time_since(last_pos_check) > SECOND / 30:
+        #     movement.update_position()
+        #     last_pos_check = time_ns()
 
-        Action.goal_align()
+        # movement.update_position()
+        # Action.goal_align()
 
     def goalie():
         screen(Screen.dot_shield)
@@ -426,7 +414,6 @@ hub      = MSHub()
 movement = VectorMovementSystem("BACD")
 sensors  = SensorHandler("E", "F")
 bot      = Bluetooth.device_adress()
-port     = Port()
 
 print(bot) # For switching out the hub
 
