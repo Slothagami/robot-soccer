@@ -113,25 +113,28 @@ HUBS = [
     "A8:E2:C1:9A:7C:6B", # Dot
     "A8:E2:C1:95:24:D9"  # Spare Hub
 ]
-BLU = HUBS[0]
+BLU = HUBS[2]
 DOT = HUBS[1]
 
 SHOW_POSITION = True
 
 params = {
     "speed":             1,
-    "dot_speed":         .95,         # Dot's speed in Attacker mode
+    "dot_speed":         .97,         # Dot's speed in Attacker mode
 
-    "field_size":        (182, 243), #(150, 170),  # cm 
+    "field_size":        (182, 243),  #(150, 170),  # cm 
     "goal_align_zone":   radians(20), # zone in front of robot where goal alignment is used
-    "goal_align_speed":  .003,
-    "goal_align_limit":  .1,
+    "goal_align_speed":  .0033,
+    "goal_align_limit":  .113,
+
+    "back_push_range":   (radians(42), radians(45)),
+    "charge_range":      radians(15),
 
     "wheel_radius":      2.8,         # cm
     "wheel_error":       radians(25), # error margin of comparison
 
-    "arc_function":      hybrid_arc,
-    "turn_deadspace":    radians(20), # angle range that resets turning to 0
+    "arc_function":      lerp_arc,
+    "turn_deadspace":    radians(10), # angle range that resets turning to 0
     "turn_factor":       (2, 1.3),    # (front, behind)
     "circle_arc":        (.7, 1.75),  # (threshold, turn amm)
 
@@ -169,6 +172,8 @@ class VectorMovementSystem:
         self.motor_angles = [0, 0, 0, 0]
         for motor in self.motors:
             motor.set_degrees_counted(0)
+        # for motor in self.motors:
+        #     self.motor_angles.append(motor.get_degrees_counted())
 
     def add(self, dir, speed=1):
         if dir == None: return
@@ -248,11 +253,13 @@ class VectorMovementSystem:
         return self.position
 
 class SensorHandler:
-    def __init__(self, distance_sensor: str, color_sensor: str, ir_segments=12):
-        self.color = ColorSensor(color_sensor)
+    def __init__(self, distance_sensor: str, ir_segments=12):
+        # self.color = ColorSensor(color_sensor)
 
         # make sure The DIP switches on the disk are configured correctly: ON ON OFF
         self.ir_sensor = dataports.get(distance_sensor).device
+        if not self.ir_sensor: raise Exception("IR Disk not found.\n")
+
         self.ir_sensor.mode(5, bytes([0,0,0,0])) # set to appropriate mode
 
         self.ir_segments = ir_segments
@@ -263,7 +270,7 @@ class SensorHandler:
         self.lerp_bdir = self.ball_direction(self.ir_data()) or 0
 
         movement.position = complex(0)
-        movement.reset_motors()
+        # movement.reset_motors()
 
     # Ball
     def interpolate_dir(self):
@@ -288,7 +295,8 @@ class SensorHandler:
         }
 
     def ball_direction(self, ir_data):
-        if ir_data.get("signal_strength") == 0: return None
+        global last_ball_angle
+        if ir_data.get("signal_strength") == 0: return last_ball_angle
 
         # make sure 0 is forward (for multiplication of angle)
         quadrant = ir_data.get("quadrant")
@@ -299,6 +307,7 @@ class SensorHandler:
 
         # convert to range [-pi, pi)
         if quadrant > self.ir_segments/2: angle -= 2*pi
+        last_ball_angle = -angle
         return -angle
 
     def ball_data(self):
@@ -351,10 +360,20 @@ class SensorHandler:
         charge  = hubdata.battery.capacity_left()
         current = hubdata.battery.current()
         voltage = hubdata.battery.voltage()
+        info    = hubdata.supervision.info()
 
-        print(hubdata.supervision.info())
-        print("Battery:\n  Temperature: {}\n  Capacity Left: {}\n  Current: {}\n  Voltage: {}\n" \
-            .format(temp, charge, current, voltage))
+        print(info)
+        print("Battery:\n  Temperature: {}\n  Capacity Left: {}\n  Current: {}\n  Voltage: {}\n".format(temp, charge, current, voltage))
+
+        def urgent_screen_alert(): hubdata.display.pixel(0, 2, 9)
+        def screen_alert(): hubdata.display.pixel(4, 2, 9)
+        if info.get("peek_current_too_high"):      urgent_screen_alert()
+        if info.get("continous_current_too_high"): urgent_screen_alert()
+        if info.get("temperature_too_high"):       urgent_screen_alert()
+        if temp     > 27: screen_alert()
+        if current <= 99: screen_alert()
+        if charge  <= 50: screen_alert()
+        if charge  <= 20: urgent_screen_alert()
 
 class Action:
     def correct_angle():
@@ -385,6 +404,10 @@ class Action:
 
         movement.add( angle * turn_ammount )
 
+        # charge
+        if abs(angle) < params.get("charge_range"):
+            movement.add(FORWARD, 1)
+
     def startup():
         global state, start_time, last_pos_check
         print("Running startup.")
@@ -397,19 +420,16 @@ class Action:
 
             if sensors.left_button():
                 state = AI.attacker
-                if bot == DOT: 
+                if bot != DOT: 
                     params["speed"] = params.get("dot_speed")
-
-                # if bot == DOT:
-                #     state = AI.goalie
-                # else:
-                #     state = AI.attacker
                 break 
 
         screen(bot_screen())
         sensors.reset()
-        start_time     = time_ns()
-        last_pos_check = time_ns()
+
+        time = time_ns()
+        start_time     = time
+        last_pos_check = time
 
     def intercept():
         if not sensors.on_line():
@@ -431,12 +451,15 @@ class Action:
         angle = sensors.ball_data().get("angle")
         if angle is None: return
         
-        spread = pi/4
-        if abs(angle) > pi - spread and abs(angle) < pi + spread:
-            movement.add(BACKWARD, 2)
-
+        # forward when ball is in front
         # if abs(angle) > params.get("turn_deadspace"):
         #     movement.add(FORWARD, .5)
+
+        # backward when ball is to the side
+        front, back = params.get("back_push_range")
+        if abs(angle) > pi - front and abs(angle) < pi + back:
+            movement.add(BACKWARD, 2)
+
 
 class AI:
     def attacker():
@@ -449,7 +472,7 @@ class AI:
         #     last_pos_check = time_ns()
 
         movement.update_position()
-        # Action.goal_align()
+        Action.goal_align()
 
         Action.back_push()
 
@@ -459,15 +482,15 @@ class AI:
         Action.correct_angle()
 
 #region Init Program
+last_ball_angle = 0
+
 hub      = MSHub()
 movement = VectorMovementSystem("BACD")
-sensors  = SensorHandler("E", "F")
+sensors  = SensorHandler("E")
 bot      = Bluetooth.device_adress()
 
-print(bot) # For switching out the hub
-
-start_time = 0
-last_pos_check = 0
+start_time      = 0
+last_pos_check  = 0
 
 # Restart loop
 while True:
@@ -476,14 +499,15 @@ while True:
 
     # In-game Loop
     while True:
-        SensorHandler.battery_status()
-
         state()
         sensors.interpolate_dir()
         movement.move()
+        SensorHandler.battery_status()
+        # print(sensors.ball_data().get("angle"))
 
         if sensors.left_button() or sensors.right_button():
             movement.stop()
+            movement.reset_motors()
             break
 
 #endregion
