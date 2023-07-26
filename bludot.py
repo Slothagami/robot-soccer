@@ -14,9 +14,9 @@ BACKWARD = pi
 SECOND = 1e9
 
 dataports = {
-    "A": hubdata.port.A, "B": hubdata.port.B,
-    "C": hubdata.port.C, "D": hubdata.port.D,
-    "E": hubdata.port.E, "F": hubdata.port.F,
+    "A": hubdata.port.A.device, "B": hubdata.port.B.device,
+    "C": hubdata.port.C.device, "D": hubdata.port.D.device,
+    "E": hubdata.port.E.device, "F": hubdata.port.F.device,
 }
 #endregion
 
@@ -249,10 +249,14 @@ class VectorMovementSystem:
 
 class SensorHandler:
     def __init__(self, distance_sensor: str, color_sensor: str, ir_segments=12):
-        self.color = ColorSensor(color_sensor)
+        # self.color = ColorSensor(color_sensor)
 
         # make sure The DIP switches on the disk are configured correctly: ON ON OFF
-        self.ir_sensor = dataports.get(distance_sensor).device
+        self.ir_sensor = dataports.get(distance_sensor)
+
+        if not self.ir_sensor:
+            raise ValueError("IR sensor not found.")
+
         self.ir_sensor.mode(5, bytes([0,0,0,0])) # set to appropriate mode
 
         self.ir_segments = ir_segments
@@ -279,8 +283,17 @@ class SensorHandler:
     def ir_data(self):
         data = self.ir_sensor.get()
 
-        direction       = data[0]
+        print(data[0], data[1], data[2], data[3])
+
+        direction       = data[3]
         signal_strength = data[2]
+
+        if data[0] != 0:
+            if direction == None or signal_strength == None:
+                raise ValueError("IR sensor in wrong mode")
+        else: 
+            signal_strength = 0
+            direction = 0
 
         return {
             "quadrant":         direction,
@@ -344,6 +357,9 @@ class SensorHandler:
     
     def right_button(self):
         return hub.right_button.was_pressed()
+    
+    def center_button(self):
+        return hubdata.button.center.is_pressed()
 
     @staticmethod
     def battery_status():
@@ -406,10 +422,16 @@ class Action:
                 #     state = AI.attacker
                 break 
 
+        state = Action.drive_test
+
         screen(bot_screen())
         sensors.reset()
         start_time     = time_ns()
         last_pos_check = time_ns()
+
+    def drive_test():
+        Action.correct_angle()
+        movement.add(FORWARD)
 
     def intercept():
         if not sensors.on_line():
@@ -460,7 +482,7 @@ class AI:
 
 #region Init Program
 hub      = MSHub()
-movement = VectorMovementSystem("BACD")
+movement = VectorMovementSystem("ABDC")
 sensors  = SensorHandler("E", "F")
 bot      = Bluetooth.device_adress()
 
@@ -470,7 +492,7 @@ start_time = 0
 last_pos_check = 0
 
 # Restart loop
-while True:
+while not sensors.center_button():
     Action.startup()
     SensorHandler.battery_status()
 
