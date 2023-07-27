@@ -1,5 +1,5 @@
 # LEGO type:standard slot:0 autostart
-from mindstorms import MSHub, Motor, ColorSensor
+from mindstorms import MSHub, Motor, DistanceSensor
 from time       import time_ns
 from math       import radians
 from cmath      import *
@@ -12,12 +12,6 @@ FORWARD  = 0
 BACKWARD = pi
 
 SECOND = 1e9
-
-dataports = {
-    "A": hubdata.port.A.device, "B": hubdata.port.B.device,
-    "C": hubdata.port.C.device, "D": hubdata.port.D.device,
-    "E": hubdata.port.E.device, "F": hubdata.port.F.device,
-}
 #endregion
 
 #region Functions
@@ -248,23 +242,23 @@ class VectorMovementSystem:
         return self.position
 
 class SensorHandler:
-    def __init__(self, distance_sensor: str, color_sensor: str, ir_segments=12):
-        # self.color = ColorSensor(color_sensor)
+    def __init__(self, distance_sensor, ir_segments=12):
+        # make sure The DIP switches on the disk are configured correctly: ON OFF OFF
+        failures = 0
+        for _ in range(10):
+            # Attempt to connect 10 times
+            try:
+                self.ir_sensor = DistanceSensor(distance_sensor)
+            except RuntimeError: failures += 1
 
-        # make sure The DIP switches on the disk are configured correctly: ON ON OFF
-        self.ir_sensor = dataports.get(distance_sensor)
-
-        if not self.ir_sensor:
-            raise ValueError("IR sensor not found.")
-
-        self.ir_sensor.mode(5, bytes([0,0,0,0])) # set to appropriate mode
+        if failures >= 10: raise Exception("sensor failed to connect.")
 
         self.ir_segments = ir_segments
         self.reset()
 
     def reset(self):
         hub.motion_sensor.reset_yaw_angle()
-        self.lerp_bdir = self.ball_direction(self.ir_data()) or 0
+        self.lerp_bdir = self.ball_direction() or 0
 
         movement.position = complex(0)
         movement.reset_motors()
@@ -280,68 +274,35 @@ class SensorHandler:
                 params.get("angle_interpolate")
             )
 
-    def ir_data(self):
-        data = self.ir_sensor.get()
+    def ir_dir(self):
+        return self.ir_sensor.get_distance_cm()
 
-        print(data[0], data[1], data[2], data[3])
-
-        direction       = data[3]
-        signal_strength = data[2]
-
-        if data[0] != 0:
-            if direction == None or signal_strength == None:
-                raise ValueError("IR sensor in wrong mode")
-        else: 
-            signal_strength = 0
-            direction = 0
-
-        return {
-            "quadrant":         direction,
-            "signal_strength":  signal_strength # at least proportional if not equal, to distance to ball
-        }
-
-    def ball_direction(self, ir_data):
-        if ir_data.get("signal_strength") == 0: return None
-
+    def ball_direction(self):
         # make sure 0 is forward (for multiplication of angle)
-        quadrant = ir_data.get("quadrant")
-        if quadrant == self.ir_segments: quadrant = 0
+        quadrant = self.ir_dir()
+        if quadrant == self.ir_segments: 
+            quadrant = 0
 
-        # 1/12 of angle = 2pi/12
-        angle = (2*pi/self.ir_segments) * quadrant
+        angle = (2*pi/self.ir_segments) * quadrant # 1/12 of angle = 2pi/12
 
-        # convert to range [-pi, pi)
-        if quadrant > self.ir_segments/2: angle -= 2*pi
+        if quadrant > self.ir_segments/2: 
+            angle -= 2*pi # convert to range [-pi, pi)
+
         return -angle
 
     def ball_data(self):
         """Returns Interpreted Data about the ball's relative position"""
-        ir_data  = self.ir_data()
-        strength = ir_data.get("signal_strength")
-
-        # Convert Strength to distance in cm
-        if strength != 0:
-            distance = 192_000 / (strength**2)
-        else:
-            distance = None
+        ir_dir  = self.ir_dir()
 
         return {
-            "raw_angle":    self.ball_direction(ir_data),
+            "raw_angle":    self.ball_direction(),
             "angle":        self.lerp_bdir,
-            "strength":     strength,
-            "distance":     distance,
-            "ball_found":   strength != 0
+            "ball_found":   ir_dir != 200 # TODO: needs check
         }
 
     # Motion 
     def rotation(self):
         return radians( hub.motion_sensor.get_yaw_angle() )
-
-    def acceleration(self):
-        """Returns: acceleration(x, y, z)"""
-        x, z, y = hubdata.motion.accelerometer()
-        # Y is flipped because gravity (downward) is read as positive
-        return -x, -y, z # x is flipped in reading for some reason
 
     # Environment
     def brightness(self):
@@ -483,7 +444,7 @@ class AI:
 #region Init Program
 hub      = MSHub()
 movement = VectorMovementSystem("ABDC")
-sensors  = SensorHandler("E", "F")
+sensors  = SensorHandler("E")
 bot      = Bluetooth.device_adress()
 
 print(bot) # For switching out the hub
