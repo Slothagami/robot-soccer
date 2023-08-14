@@ -1,6 +1,6 @@
 # LEGO type:standard slot:0 autostart
 from mindstorms import MSHub, Motor, DistanceSensor
-from time       import time_ns
+from time       import time_ns,sleep
 from math       import radians
 from cmath      import *
 import hub as hubdata
@@ -146,23 +146,17 @@ class Bluetooth:
 class VectorMovementSystem:
     def __init__(self, motors: str, wheel_angle=45):
         """ motors in order: (x, -x, y, -y) """
-        self.motors       = [Motor(port) for port in motors]
         self.velocity     = 0
         self.spin         = 0
         self.wheel_angle  = radians(wheel_angle)
         self.position     = 0
         self.motor_angles = [0, 0, 0, 0]
 
-        # reset motor counts
-        for motor in self.motors:
-            motor.set_stop_action("hold")
 
         self.reset_motors()
 
     def reset_motors(self):
         self.motor_angles = [0, 0, 0, 0]
-        for motor in self.motors:
-            motor.set_degrees_counted(0)
 
     def add(self, dir, speed=1):
         if dir == None: return
@@ -179,29 +173,16 @@ class VectorMovementSystem:
         dx = norm.real
         dy = norm.imag
 
-        for motor, power in zip(self.motors, (dx, -dx, dy, -dy)):
-            # scale down to make room for spinning,
-            # then blend spinning into movement using that extra space
-            power_scale = 1 - abs(self.spin)
-            power_comp  = power * power_scale + self.spin
-
-            motor.start(int(100 * power_comp * params.get("speed")))
-
         self.velocity = 0
         self.spin     = 0
 
     def stop(self):
-        for motor in self.motors:
-            motor.stop()
+        pass
 
     def update_position(self):
         counts = []
         # motors change order (x, -x, y, -y) -> (x, x, y, y)
-        for n, motor in enumerate(self.motors):
-            counts.append(
-                # flip every other motor count (they spin opposite)
-                (-1)**n * radians(motor.get_degrees_counted())
-            )
+        
 
         delta_counts = [count - pcount for count, pcount in zip(counts, self.motor_angles)]
 
@@ -268,8 +249,9 @@ class SensorHandler:
             )
 
     def ir_dir(self):
-        return 0
-        # return self.ir_sensor.get_distance_cm()
+        dir = self.ir_sensor.get_distance_cm()
+        print(dir)
+        return dir
 
     def ball_direction(self):
         # make sure 0 is forward (for multiplication of angle)
@@ -453,7 +435,8 @@ while not sensors.center_button():
 
     # In-game Loop
     while True:
-        SensorHandler.battery_status()
+        # sleep(.1)
+        # SensorHandler.battery_status()
 
         state()
         sensors.interpolate_dir()
