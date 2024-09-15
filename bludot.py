@@ -16,23 +16,28 @@ SECOND = 1e9
 
 #region Functions
 # Arc functions
+# Arc functions can be visualised in ai-simulation/curve_sim
 def hybrid_arc(angle):
-    threshold, circle_turn = params.get("circle_arc")
+    # use the lerp arc until certain angle behind the ball, then turn in a circle
+    threshold, circle_turn = params.get("hybrid_cutoff")
     perc = abs(angle / pi)
     if perc > threshold: return lerp_arc(angle)
     return circle_turn
 
 def lerp_arc(angle):
-    front_turn, back_turn = params.get("turn_factor")
+    # adjust turn factor with angle to the ball between the extremes in the settings
+    front_turn, back_turn = params.get("lerp_arc_factors")
     perc = abs(angle / pi)
     return lerp(front_turn, back_turn, perc)
 
 
+# Helpful Math Functions
 def sign(x):
     if x == 0: return 0
     return int(x / abs(x))
 
 def lerp(val, targ, amm):
+    # Lerp is Linear intERPolation. Used for smoothing of values
     if val is not None:
         return (targ - val) * amm + val
     else: return None
@@ -46,11 +51,10 @@ def average(*args):
     if not isinstance(args[0], (int, float, complex)): args = args[0]
     return sum(args) / len(args)
 
-def aprox_equal(a, b, error_margin):
-    return b - error_margin < a < b + error_margin
     
 class Norm:
     def square(velocity):
+        # Square norm maximises the bot's speed, but makes it non uniform (fastest when moving forward, backward left and right, and slowest on diagonals)
         velocity = complex(velocity)
 
         max_coord = max(abs(velocity.real), abs(velocity.imag))
@@ -59,6 +63,8 @@ class Norm:
         return velocity / max_coord
 
     def circle(velocity):
+        # circle norm makes the bot slower when moving forward/back/left/right, but it has a uniform speed for all directions.
+        # Used on one bot so they have variation in AI and don't constantly clump together.
         velocity = complex(velocity)
         if velocity == 0: return velocity
         
@@ -102,6 +108,8 @@ class Screen:
 #endregion
 
 #region Params
+# Bluetooth MAC adesses assigned to each hub. this is printed on progam load
+# and is used by the program to identify wich bot is being used.
 HUBS = [
     "38:0B:3C:AA:AA:CD", # Blu
     "A8:E2:C1:9A:7C:6B", # Dot
@@ -110,31 +118,31 @@ HUBS = [
 BLU = HUBS[0]
 DOT = HUBS[1]
 
-SHOW_POSITION = True
+SHOW_POSITION = True # weather to show an indicator of position on the screen, used for debugging
 
-params = {
-    "speed":             1,
+params = { # Settings
+    # Measurements
+    "field_size":        (182, 243),  # width and height of the soccer field (cm) used for calculating position
+    "wheel_radius":      2.8,         # cm, used to calculate position
+
+    "speed":             1,           # Percent of the bots max speed to move at
     "dot_speed":         .95,         # Dot's speed in Attacker mode
 
-    "field_size":        (182, 243), #(150, 170),  # cm 
-    "goal_align_zone":   radians(20), # zone in front of robot where goal alignment is used
-    "goal_align_speed":  .003,
-    "goal_align_limit":  .1,
+    # Finding the Goal
+    "goal_align_zone":   radians(20), # zone in front of robot where it will center itself on the goal if the ball is there
+    "goal_align_speed":  .003,        # strength of push toward the goal
+    "goal_align_limit":  .1,          # maximum strength of goal push
 
-    "wheel_radius":      2.8,         # cm
-    "wheel_error":       radians(25), # error margin of comparison
+    # Capturing the Ball
+    "arc_function":      hybrid_arc,  # function to use when trying to get behind the ball
+    "turn_deadspace":    radians(20), # angle range to consider the ball "captured" and start moving towards the goal
+    "lerp_arc_factors":  (2, 1.3),    # (front, behind), extreme turn factors for the lerp arc function
+    "hybrid_cutoff":     (.7, 1.75),  # (threshold, turn amm), for the hybrid function, threshold is when to switch to circular turning, and turn amm is how tightly to turn
 
-    "arc_function":      hybrid_arc,
-    "turn_deadspace":    radians(20), # angle range that resets turning to 0
-    "turn_factor":       (2, 1.3),    # (front, behind)
-    "circle_arc":        (.7, 1.75),  # (threshold, turn amm)
-
-    "angle_deadzone":    radians(4),  # deadzone size
-    "angle_correct":     .2,         # speed of correction
-    "angle_interpolate": .8,          # lerp speed of interpolaton
-
-    "force_threshold":   800,         # size of a "significant force"
-    "field_brightness":  (17, 40)     # range for brightness of the green carpet
+    # Gyro (Compass/Rotation) correction
+    "angle_deadzone":    radians(4),  # error margin for what's considered "facing forward" (set to ± 4°)
+    "angle_correct":     .2,          # speed to rotate back to forward when knocked around (the robot sacrifices speed to rotate faster, so keep this small)
+    "angle_interpolate": .8,          # how much to smooth out sensor readings, this makes the robot turn more smoothly. 1 = no smoothing, 0 = very slow smoothig (slow smoothing means the bot sees the ball where it was further in the past) (lerp speed of interpolaton)
 }
 #endregion
 
@@ -175,6 +183,9 @@ class VectorMovementSystem:
         self.spin = clamp(self.spin, -1, 1)
 
     def move(self):
+        # apply queued up movement to motors. 
+        # note: translational movement is slowed down to allow for rotation. if spin == 1 the robot will stop moving to spin at maximum speed
+
         norm = Norm.square(self.velocity)
         dx = norm.real
         dy = norm.imag
@@ -195,6 +206,7 @@ class VectorMovementSystem:
             motor.stop()
 
     def update_position(self):
+        # use motor turning measurements to calculate how far the robot has moved (keep track of position on the field)
         counts = []
         # motors change order (x, -x, y, -y) -> (x, x, y, y)
         for n, motor in enumerate(self.motors):
@@ -226,6 +238,7 @@ class VectorMovementSystem:
         self.motor_angles = counts
 
         # clamp position to field size to account for walls
+        # this also helps to fix position errors when bot runs up against the wall
         field_half = params.get("field_size")[0] / 2
         self.position = complex(
             self.position.real, 
@@ -258,6 +271,7 @@ class SensorHandler:
 
     # Ball
     def interpolate_dir(self):
+        # smooth out the sensed ball angle, so the robot moves smoothly (helps maintain momentum)
         ball = self.ball_data()
 
         if ball.get("ball_found"):
@@ -268,10 +282,11 @@ class SensorHandler:
             )
 
     def ir_dir(self):
-        return 0
-        # return self.ir_sensor.get_distance_cm()
+        # returns the segment on the sensor where the ball is detected
+        return self.ir_sensor.get_distance_cm()
 
     def ball_direction(self):
+        # returns angle to the ball in radians, with 0 as forward.
         # make sure 0 is forward (for multiplication of angle)
         quadrant = self.ir_dir()
         if quadrant == self.ir_segments: 
@@ -298,15 +313,6 @@ class SensorHandler:
     def rotation(self):
         return radians( hub.motion_sensor.get_yaw_angle() )
 
-    # Environment
-    def brightness(self):
-        return self.color.get_reflected_light()
-
-    def on_line(self):
-        floor_min, floor_max = params.get("field_brightness")
-        on_line = not ( floor_min < sensors.brightness() < floor_max )
-        return on_line 
-
     def left_button(self):
         return hub.left_button.was_pressed()
     
@@ -318,6 +324,7 @@ class SensorHandler:
 
     @staticmethod
     def battery_status():
+        # useful for competitions when hub us under heavy use, swap out the hub before it gets too hot!
         temp    = hubdata.battery.temperature()
         charge  = hubdata.battery.capacity_left()
         current = hubdata.battery.current()
@@ -329,18 +336,21 @@ class SensorHandler:
 
 class Action:
     def correct_angle():
-        # Rotates the robot so the yaw is ~0
+        # Rotates the robot so its facing the goal (yaw ≈ 0)
         rot = sensors.rotation()
         if abs(rot) > params.get("angle_deadzone"):
             movement.add_spin(rot * params.get("angle_correct"))
 
     def follow_ball():
+        # blindly follow the ball (use for testing)
         movement.add(sensors.ball_data().get("angle"))
 
     def chase():
+        # use the arc function to follow the ball (getting behind it first)
         ball = sensors.ball_data()
         angle = ball.get("angle")
 
+        # display weather ball is detected on hub screen
         if not ball.get("ball_found"): 
             hubdata.display.pixel(2, 0, 0)
             return
@@ -362,6 +372,12 @@ class Action:
         screen(bot_loading())
 
         while True:
+            # buttons determine attack strategy used in the game.
+            # pressing the right button on each bot will activate the "power build"
+            # where each bot behaves identically, so they clump together and push the ball with more force.
+            # this is useful when the opposition has strong or heavy bots.
+            # pressing the left buttons activates the standard strategy where the bots have different speeds 
+            # this allows dot to hang back and support from behind
             if sensors.right_button():
                 state = AI.attacker
                 break 
@@ -377,7 +393,7 @@ class Action:
                 #     state = AI.attacker
                 break 
 
-        state = Action.drive_test
+        # state = Action.drive_test
 
         screen(bot_screen())
         sensors.reset()
@@ -385,15 +401,13 @@ class Action:
         last_pos_check = time_ns()
 
     def drive_test():
+        # use to test if the wheels are configured correctly
         Action.correct_angle()
         movement.add(FORWARD)
 
-    def intercept():
-        if not sensors.on_line():
-            # move horizontally to the ball's predicted location
-            pass
 
     def goal_align():
+        # push the bot horizontally toward the goal (assumed to be in front of its starting position)
         ball = sensors.ball_data()
         if not ball.get("ball_found"): return
         if ball.get("angle") is None:  return
@@ -405,6 +419,7 @@ class Action:
             movement.add(RIGHT, align_speed)
 
     def back_push():
+        # used to narrow the arc function so the bot doesn't hit the edges of the field.
         angle = sensors.ball_data().get("angle")
         if angle is None: return
         
@@ -412,42 +427,31 @@ class Action:
         if abs(angle) > pi - spread and abs(angle) < pi + spread:
             movement.add(BACKWARD, 2)
 
-        # if abs(angle) > params.get("turn_deadspace"):
-        #     movement.add(FORWARD, .5)
-
 class AI:
     def attacker():
         global last_pos_check
         Action.chase()
         Action.correct_angle()
 
-        # if time_since(last_pos_check) > SECOND / 30:
-        #     movement.update_position()
-        #     last_pos_check = time_ns()
-
         movement.update_position()
-        # Action.goal_align()
-
+        Action.goal_align()
         Action.back_push()
-
-    def goalie():
-        screen(Screen.dot_shield)
-        Action.intercept()
-        Action.correct_angle()
 
 #region Init Program
 hub      = MSHub()
-movement = VectorMovementSystem("ADCB")
-sensors  = SensorHandler("E")
+movement = VectorMovementSystem("ADCB") # Ports where motors are connected in order (x, -x, y, -y)
+sensors  = SensorHandler("E")           # Port where ball sensor is connected
 bot      = Bluetooth.device_adress()
 
-print(bot) # For switching out the hub
+print(bot) # show the bot's MAC address to add to the HUBS list at the top
 
-start_time = 0
+start_time     = 0
 last_pos_check = 0
 
 # Restart loop
-while not sensors.center_button():
+# pressing center button stops the program, otherwise the bots can be started/stopped to move them on the field by hand
+# this also resets the goal position and forward angle to wherever the bot is facing when its started again. (This is a huge advantage)
+while not sensors.center_button(): 
     Action.startup()
     SensorHandler.battery_status()
 
