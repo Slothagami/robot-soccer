@@ -11,7 +11,7 @@ RIGHT    = -LEFT
 FORWARD  = 0
 BACKWARD = pi
 
-SECOND = 1e9
+SECOND = 1e9 # one second in nanoseconds
 #endregion
 
 #region Functions
