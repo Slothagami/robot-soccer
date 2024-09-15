@@ -25,7 +25,7 @@ var ball = {x: 200, y:200},
 function next_point(point, func, origin=undefined, color="white") {
     let dist = Math.hypot(ball.x - point.x, ball.y - point.y)
     if(dist < minDist) return
-    if(abs(point.x) > 1000 || abs(point.y) > 1000) return
+    if(abs(point.x) > 10000 || abs(point.y) > 10000) return
 
     let angle = Math.atan2(ball.y - point.y, ball.x - point.x)
     let dx = Math.cos(func(angle)) * speed

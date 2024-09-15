@@ -11,7 +11,7 @@ const exp       = angle => Math.exp(-angle+1)
 
 const map = perc => perc ** 2
 
-function line(angle) {
+function hybrid_arc(angle) {
     let perc = abs(angle / pi)
     if (perc > .7) return lerpScale(angle)
     return angle * 1.75//1.9
@@ -34,5 +34,5 @@ function beasier2(angle) {
     return lerpScale(angle)
 }
 
-const ANGLE_FUNC = line
+const ANGLE_FUNC = hybrid_arc
 const COMPARE_FUNC = lerpScale
