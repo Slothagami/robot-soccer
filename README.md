@@ -2,7 +2,7 @@
 Robot Soccer AI for the LEGO MINDSTORMS robots used by TCC. 
 
 ## Robot Design
-The assumed design of the robot, along with motor and direction designatons is shown below. Directions are relative to the wheels. its worth noting that the robot will move fastest on the diagonals between two wheels.
+The assumed design of the robot, along with motor and direction designatons is shown below. Directions are relative to the wheels. its worth noting that the robot will move fastest on the diagonals between two wheels. The program is also flexible enough to handle different angles between the wheels, as long as opposite wheels are coaxial and parallell. the angle is measured between the right direction and wheel 3 in the diagram, and is assumed to be symetrical. the diagram below shows a wheel angle of 45°.
 ![image](diagrams/robot.png)
 
 
