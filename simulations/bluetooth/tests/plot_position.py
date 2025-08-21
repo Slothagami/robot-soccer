@@ -4,6 +4,12 @@ from time          import sleep
 import pygame as pg 
 import sys
 
+# 
+# Used to plot the robot's internal cordinates on my computer
+# so that it can be compared to real physical position for debug 
+# purposes.
+# 
+
 class Color:
     white  = (255, 255, 255)
     black  = (0, 0, 0)
