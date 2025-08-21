@@ -1,0 +1,19 @@
+body {
+    overflow: hidden;
+    margin: 0;
+    background-color: #101010;
+}
+
+#instructions {
+    position: absolute;
+    top:  1em;
+    left: 1em;
+    width: 33vw;
+
+    padding: 2em;
+    background-color: rgba(0, 0, 0, 0.384);
+
+    font-family: sans-serif;
+    color: white;
+    border-radius: 1em;
+}
